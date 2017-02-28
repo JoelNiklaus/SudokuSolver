@@ -24,7 +24,7 @@ BEST_FEW = 0.1  # percentage of best individuals of the population which gets se
 
 
 NUMBER_GENERATION = 100000  # maximum generation which can be reached: termination criteria
-POPULATION_SIZE = 500  # number of individuals per generation
+POPULATION_SIZE = 100  # number of individuals per generation
 TRUNCATION_RATE = 0.5  # best 50% of the population is kept
 MUTATION_RATE = 1.0 / INDIVIDUAL_SIZE  # probability to change a specific number during mutation
 SUPER_MUTATION_RATE = 10.0 / INDIVIDUAL_SIZE  # probability to change a specific number during supermutation
@@ -54,9 +54,9 @@ def evolve(population_size, grid):
         population = mutate_pop(offspring_population, initial_sudoku, MUTATION_RATE)
         fitness_population = evaluate_pop(population)
         best_ind, best_fit = best_pop(population, fitness_population)
-        print "\n#%5d" % gen, "fitness:%3d\n" % best_fit, "".join(np.array_str(best_ind))
+        print("\n#%5d" % gen, "fitness:%3d\n" % best_fit, "".join(np.array_str(best_ind)))
         if best_fit == 0:
-            print "Solution found."
+            print("Solution found.")
             return gen
         if best_fit < 6:
             if False:
@@ -82,18 +82,18 @@ def evolve(population_size, grid):
 
 
 def dead_end(best_ind, tolerance, offspring_population, initial_sudoku):
-    print "Probable dead end found after", tolerance, "generations with same best individual."
+    print("Probable dead end found after", tolerance, "generations with same best individual.")
     # retrievable genetic algorithm: if dead end is found -> start over
     # print "Start over with new random population."
     # evolve()
 
     # blacklist: if dead end is found -> insert sudoku into blacklist
     add_to_blacklist(best_ind)
-    print "Individual added to blacklist."
-    print "The blacklist now contains", len(blacklist), "items."
+    print("Individual added to blacklist.")
+    print("The blacklist now contains", len(blacklist), "items.")
 
     # supermutation: if deadend is found apply big mutation to whole population
-    print "Supermutation applied with super mutation rate", SUPER_MUTATION_RATE
+    print("Supermutation applied with super mutation rate", SUPER_MUTATION_RATE)
     return mutate_pop(offspring_population, initial_sudoku, SUPER_MUTATION_RATE)
 
 
@@ -446,7 +446,8 @@ def parse_input(filename):
         lines = file.readlines()
     for line in lines:
         if '-' not in line:
-            line = line.translate(None, '!')
+            delete = line.maketrans(dict.fromkeys("!"))
+            line = line.translate(delete)
             line = line.replace(".", "0")
             line = line.strip()
             row = [int(i) for i in list(line)]
@@ -456,9 +457,10 @@ def parse_input(filename):
 
 ### SETUP ###
 
-grid1 = '/Users/joelniklaus/Google Drive/Studium/Bachelor/Austauschsemester/Computer Science/Artificial Intelligance And Applications/Exercises/Coursework/src/grid1.ss.txt'
-grid2 = '/Users/joelniklaus/Google Drive/Studium/Bachelor/Austauschsemester/Computer Science/Artificial Intelligance And Applications/Exercises/Coursework/src/grid2.ss.txt'
-grid3 = '/Users/joelniklaus/Google Drive/Studium/Bachelor/Austauschsemester/Computer Science/Artificial Intelligance And Applications/Exercises/Coursework/src/grid3.ss.txt'
+# grids have to be in the same directory as this file
+grid1 = 'grid1.ss.txt'
+grid2 = 'grid2.ss.txt'
+grid3 = 'grid3.ss.txt'
 
 ### EVOLVE! ###
 
@@ -476,30 +478,30 @@ def experiment_for_population_size(size, grid):
         generations += currentGenerations
         currentTime = timer() - start
         time += currentTime
-        print x, "th Run Number of Generations:", currentGenerations, currentTime, "s"
-    print "Average Number of Generations:", generations / 5, time, "s"
+        print(x, "th Run Number of Generations:", currentGenerations, currentTime, "s")
+    print("Average Number of Generations:", generations / 5, time, "s")
 
 
 def experiment_for_grids(size):
-    print "========== Population Size:", size, "=========="
+    print("========== Population Size:", size, "==========")
 
-    print "===== Grid 3 ====="
+    print("===== Grid 3 =====")
     experiment_for_population_size(size, grid3)
 
-    print "===== Grid 2 ====="
+    print("===== Grid 2 =====")
     experiment_for_population_size(size, grid2)
 
-    print "===== Grid 1 ====="
+    print("===== Grid 1 =====")
     experiment_for_population_size(size, grid1)
 
 
 def experiment():
-    print "Start of Experiment"
+    print("Start of Experiment")
     experiment_for_grids(10)
     experiment_for_grids(100)
     experiment_for_grids(1000)
     experiment_for_grids(10000)
-    print "End of Experiment"
+    print("End of Experiment")
 
 
 ### EXPERIMENT! ###
@@ -512,15 +514,15 @@ if False:
     mother = create_ind()
     father = create_ind()
 
-    print "create"
-    print mother
+    print("create")
+    print(mother)
 
-    print "fitness"
-    print evaluate_ind(mother)
+    print("fitness")
+    print(evaluate_ind(mother))
 
     child = crossover_ind(mother, father)
-    print "crossover"
-    print child
+    print("crossover")
+    print(child)
 
-    print "mutate"
-    print mutate_ind(child)
+    print("mutate")
+    print(mutate_ind(child))
