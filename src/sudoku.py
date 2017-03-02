@@ -18,16 +18,16 @@ numbers = range(1, NINE + 1)  # all numbers used in the sudoku
 DEAD_END_IND_TOLERANCE = 5
 DEAD_END_FIT_TOLERANCE = 10
 
-SELECTION_PROBABILITY = 0.55  # probability that best individual of tournament gets selected
+SELECTION_PROBABILITY = 0.6  # probability that best individual of tournament gets selected
 TOURNAMENT_SIZE = 2  # number of individuals per tournament
 BEST_FEW = 0.1  # percentage of best individuals of the population which gets selected anyway
 
-
-NUMBER_GENERATION = 100000  # maximum generation which can be reached: termination criteria
-POPULATION_SIZE = 100  # number of individuals per generation
+NUMBER_GENERATION = 100000  # maximum generation which can be reached: possible termination criteria
+MAX_TIME = 60 * 20  # maximum amount of seconds the algorithm may take: chosen termination criteria
+POPULATION_SIZE = 500  # number of individuals per generation: optimized for 500
 TRUNCATION_RATE = 0.5  # best 50% of the population is kept
 MUTATION_RATE = 1.0 / INDIVIDUAL_SIZE  # probability to change a specific number during mutation
-SUPER_MUTATION_RATE = 10.0 / INDIVIDUAL_SIZE  # probability to change a specific number during supermutation
+SUPER_MUTATION_RATE = 20.0 / INDIVIDUAL_SIZE  # probability to change a specific number during supermutation
 
 ### EVOLUTIONARY ALGORITHM ###
 
@@ -37,34 +37,44 @@ blacklist = []
 # Biggest Difficulty: Premature divergence towards local optima, so no solution can be found.
 # Solution approach: maintain big diversity and converge slowly so that hopefully most of the landscape can be explored.
 # TODO maintain diversity to prevent premature divergence e.g. Multipopulation GA
-def evolve(population_size, grid):
+def evolve(population_size, grid, presolving):
     sudoku = parse_input(grid)
-    sudoku = presolve(sudoku)
-    initial_sudoku = np.copy(sudoku)
+    if presolving:
+        sudoku = presolve(sudoku)
+    # initial_sudoku = np.copy(sudoku)
 
+    generation = 0
     dead_end_ind_counter = 0
     dead_end_fit_counter = 0
     last_best_ind = 0
     last_fit = 100
+
     population = create_pop(sudoku, population_size)
     fitness_population = evaluate_pop(population)
-    for gen in range(NUMBER_GENERATION):
-        mating_pool = select_pop(population, fitness_population, population_size)
+
+    # for gen in range(NUMBER_GENERATION):
+    start = timer()
+    while (timer() - start) < MAX_TIME:
+        print("Time passed:", timer() - start)
+        generation += 1
+        mating_pool = select_pop(population, fitness_population, population_size, sudoku)
         offspring_population = crossover_pop(mating_pool, population_size)
-        population = mutate_pop(offspring_population, initial_sudoku, MUTATION_RATE)
+        population = mutate_pop(offspring_population, sudoku, MUTATION_RATE)
         fitness_population = evaluate_pop(population)
         best_ind, best_fit = best_pop(population, fitness_population)
-        print("\n#%5d" % gen, "fitness:%3d\n" % best_fit, "".join(np.array_str(best_ind)))
+        print("\n#%5d" % generation, "fitness:%3d" % best_fit, "diversity:", unique_population_size(population), "/",
+              population_size)
+        print("".join(np.array_str(best_ind)))
         if best_fit == 0:
             print("Solution found.")
-            return gen
+            return generation
         if best_fit < 6:
             if False:
                 best_ind_hash = hash(best_ind)
                 if best_ind_hash == last_best_ind:
                     dead_end_ind_counter += 1
                     if dead_end_ind_counter > DEAD_END_IND_TOLERANCE:
-                        population = dead_end(best_ind, DEAD_END_IND_TOLERANCE, offspring_population, initial_sudoku)
+                        population = dead_end(best_ind, DEAD_END_IND_TOLERANCE, offspring_population, sudoku)
                         dead_end_ind_counter = 0
                 else:
                     dead_end_ind_counter = 0
@@ -72,7 +82,7 @@ def evolve(population_size, grid):
             if best_fit == last_fit:
                 dead_end_fit_counter += 1
                 if dead_end_fit_counter > DEAD_END_FIT_TOLERANCE:
-                    population = dead_end(best_ind, DEAD_END_FIT_TOLERANCE, offspring_population, initial_sudoku)
+                    population = dead_end(best_ind, DEAD_END_FIT_TOLERANCE, offspring_population, sudoku)
                     dead_end_fit_counter = 0
             else:
                 dead_end_fit_counter = 0
@@ -80,9 +90,12 @@ def evolve(population_size, grid):
             # last_best_ind = best_ind_hash
             last_fit = best_fit
 
+    print("No solution found after", generation, "generations and ", MAX_TIME, "s")
+    return generation
+
 
 def dead_end(best_ind, tolerance, offspring_population, initial_sudoku):
-    print("Probable dead end found after", tolerance, "generations with same best individual.")
+    print("Probable dead end found after", tolerance, "generations with same best fitness.")
     # retrievable genetic algorithm: if dead end is found -> start over
     # print "Start over with new random population."
     # evolve()
@@ -104,12 +117,25 @@ def create_pop(sudoku, population_size):
 
 
 def evaluate_pop(population):
+    assert population
     return [evaluate_ind(individual) for individual in population]
 
 
 def select_pop_old(population, fitness_population, population_size):
+    assert population
     sorted_population = sorted(zip(population, fitness_population), key=lambda ind_fit: ind_fit[1])
     return [individual for individual, fitness in sorted_population[:int(population_size * TRUNCATION_RATE)]]
+
+
+def unique_population_size(population):
+    sum = 0
+    hashes = []
+    for individual in population:
+        data_hash = hash(individual)
+        if data_hash not in hashes:
+            sum += 1
+            hashes.append(data_hash)
+    return sum
 
 
 def hash(individual):
@@ -147,12 +173,31 @@ def is_in_blacklist(individual):
 
 
 # use tournament selection to prevent premature divergence
-def select_pop(population, fitness_population, population_size):
+def select_pop(population, fitness_population, population_size, sudoku):
+    assert population
+
+    # fill up population
+    current_population_size = len(population)
+    for _ in range(current_population_size, population_size):
+        individual = create_ind(sudoku)
+        population.append(individual)
+        fitness_population.append(evaluate_ind(individual))
+
+    assert len(population) == population_size
+
     sorted_population = sorted(zip(population, fitness_population), key=lambda ind_fit: ind_fit[1])
-    # eliminate duplicates to preserve diversity
-    sorted_population = remove_duplicates(sorted_population)
+
+    assert sorted_population
+
     # delete elements contained in blacklist
     sorted_population = remove_blacklist_items(sorted_population, blacklist)
+
+    assert sorted_population
+
+    # eliminate duplicates to preserve diversity
+    sorted_population = remove_duplicates(sorted_population)
+
+    assert sorted_population
 
     mating_pool = [individual for individual, fitness in
                    sorted_population[:int(population_size * BEST_FEW)]]  # include best few for sure
@@ -163,25 +208,30 @@ def select_pop(population, fitness_population, population_size):
                 mating_pool.append(sorted_population[ind][0])
                 sorted_population.pop(ind)
                 break
+
+    assert mating_pool
     return mating_pool
 
 
 def crossover_pop(population, population_size):
+    assert population
+
     return [crossover_ind(choice(population), choice(population)) for _ in range(population_size)]
 
 
 def mutate_pop(population, initial_sudoku, mutation_rate):
+    assert population
+
     return [mutate_ind(individual, initial_sudoku, mutation_rate) for individual in population]
 
 
 def best_pop(population, fitness_population):
+    assert population
+
     return sorted(zip(population, fitness_population), key=lambda ind_fit: ind_fit[1])[0]
 
 
 ### INDIVIDUAL-LEVEL OPERATORS: REPRESENTATION & PROBLEM SPECIFIC ###
-
-
-
 
 def create_ind_old(sudoku):
     individual = np.copy(sudoku)
@@ -197,12 +247,13 @@ def create_ind_old(sudoku):
 def create_ind(sudoku):
     individual = np.copy(sudoku)
     for row in range(0, NINE):
-        availableNumbers = list(set(numbers) - set(sudoku[row]))  # the numbers which are not yet taken
+        availableNumbers = list(set(numbers) - set(sudoku[row]))  # delete the numbers already taken in the row
         for col in range(0, NINE):
-            if sudoku[row][col] == 0:
+            if availableNumbers and sudoku[row][col] == 0:
                 individual[row][col] = choice(availableNumbers)
                 availableNumbers.remove(individual[row][col])
 
+    assert not 0 in individual
     return individual
 
 
@@ -221,8 +272,9 @@ def evaluate_ind(individual):
     for row in range(0, NINE, 3):
         for col in range(0, NINE, 3):
             square = individual[row:row + 3, col:col + 3]  # get every little square
-            number_of_duplicates += NINE - len(
-                np.unique(square))  # compute difference between nine and the number of unique numbers
+            # compute difference between nine and the number of unique numbers
+            number_of_duplicates += NINE - len(np.unique(square))
+            # number_of_duplicates += NINE - np.sum([number for number in np.bincount(square) if number == 1])
             # difference_to_45 += abs(45 - np.sum(square))
 
     return number_of_duplicates  # + int(difference_to_45 / 3)
@@ -248,7 +300,10 @@ def crossover_ind_old(mother, father):
             if random() < 0.5:
                 child[row][col] = father[row][col]
 
-    return child
+    # only allow children which are not in the blacklist
+    if not is_in_blacklist(child):
+        return child
+    return choice([mother, father])
 
 
 # crossover
@@ -257,6 +312,7 @@ def crossover_ind_old(mother, father):
 def crossover_ind(mother, father):
     child = np.copy(mother)
     type = choice(['row', 'col', 'square'])
+    # type = 'row'
     if type == 'row':
         for row in range(0, NINE):
             if random() < 0.5:
@@ -304,6 +360,7 @@ def mutate_ind(individual, initial_sudoku, mutation_rate):
         mutation = mutate_swap_duplicates(individual, initial_sudoku)
     else:
         type = choice(['row', 'col', 'square'])
+        # type = 'row'
         if type == 'row':
             mutation = mutate_row(individual, initial_sudoku, mutation_rate)
 
@@ -462,46 +519,67 @@ grid1 = 'grid1.ss.txt'
 grid2 = 'grid2.ss.txt'
 grid3 = 'grid3.ss.txt'
 
+
 ### EVOLVE! ###
 
-evolve(POPULATION_SIZE, grid2)
+# evolve(POPULATION_SIZE, grid2, True)  # if presolving should be turned of, just put False in here
 
 
 ### EXPERIMENTS! ###
 
 def experiment_for_population_size(size, grid):
+    solved_number = 0
     generations = 0
     time = 0
-    for x in range(1, 6):
+    ROUNDS = 5
+    for x in range(1, ROUNDS + 1):
         start = timer()
-        currentGenerations = evolve(size, grid)
+        currentGenerations = evolve(size, grid, True)  # if presolving should be turned of, just put False in here
         generations += currentGenerations
         currentTime = timer() - start
+        if currentTime < MAX_TIME:
+            solved_number += 1
         time += currentTime
-        print(x, "th Run Number of Generations:", currentGenerations, currentTime, "s")
-    print("Average Number of Generations:", generations / 5, time, "s")
+        print(str(x) + "th Run: Number of Generations: " + str(currentGenerations) + ", " + str(
+            round(currentTime, 3)) + "s")
+    summary = "Average Number of Generations: " + str(generations / ROUNDS) + ", Algorithm running for: " + str(
+        round(time, 3)) + "s, Number of solved Sudokus: " + str(solved_number) + "/" + str(ROUNDS) + "\n"
+    print(summary)
+    return summary
 
 
 def experiment_for_grids(size):
-    print("========== Population Size:", size, "==========")
+    text = "========== Population Size: " + str(size) + " =========="
+    print(text)
+    summary = text + "\n"
 
-    print("===== Grid 3 =====")
-    experiment_for_population_size(size, grid3)
+    text = "===== Grid 3 ====="
+    print(text)
+    summary += text + "\n"
+    summary += experiment_for_population_size(size, grid3) + "\n"
 
-    print("===== Grid 2 =====")
-    experiment_for_population_size(size, grid2)
+    text = "===== Grid 2 ====="
+    print(text)
+    summary += text + "\n"
+    summary += experiment_for_population_size(size, grid2) + "\n"
 
-    print("===== Grid 1 =====")
-    experiment_for_population_size(size, grid1)
+    text = "===== Grid 1 ====="
+    print(text)
+    summary += text + "\n"
+    summary += experiment_for_population_size(size, grid1) + "\n"
+
+    return summary
 
 
 def experiment():
-    print("Start of Experiment")
-    experiment_for_grids(10)
-    experiment_for_grids(100)
-    experiment_for_grids(1000)
-    experiment_for_grids(10000)
-    print("End of Experiment")
+    print("==================== Start of Experiment ====================")
+    summary = experiment_for_grids(10) + "\n"
+    summary += experiment_for_grids(100) + "\n"
+    summary += experiment_for_grids(1000) + "\n"
+    summary += experiment_for_grids(10000) + "\n"
+    print("==================== Experiment Summary ====================")
+    print(summary)
+    print("==================== End of Experiment ====================")
 
 
 ### EXPERIMENT! ###
